@@ -1,199 +1,447 @@
-# Threat Hunt Report — Azuki Import/Export Espionage Case
-### Cyber Range Incident Investigation | November 2025
+# 🕵️ Threat Hunt Report — Azuki Import/Export Espionage Case
+## Cyber Range Incident Investigation | November 2025
 
 ---
 
-## Incident Brief
+# 📌 Executive Summary
 
-### Organisation
+This investigation simulated a real-world corporate espionage incident involving the compromise of a logistics company workstation through exposed Remote Desktop Protocol (RDP) access.
 
-<img width="597" height="902" alt="image" src="https://github.com/user-attachments/assets/5c1ac1d3-0a5e-4e13-91bd-3831aacbdced" />
+The attacker successfully gained unauthorized access to the IT administrator workstation `AZUKI-SL`, established persistence, executed PowerShell-based activity, and exfiltrated sensitive supplier contracts and pricing documentation over encrypted outbound channels.
 
-Azuki Import / Export Trading Co.  
-23 employees | Shipping logistics (Japan & Southeast Asia)
+The incident demonstrated multiple stages of the cyber kill chain including:
 
-### Situation
-A competitor undercut Azuki’s 6-year shipping contract by exactly 3%.  
-Soon after, **internal supplier contracts and pricing documents appeared on underground forums**.
+- initial access
+- execution
+- persistence
+- discovery
+- data exfiltration
 
-### Compromised System
-- Hostname: AZUKI-SL  
-- Role: IT Administrator Workstation  
-
-### Evidence Available
-- Microsoft Defender for Endpoint telemetry
+Using Microsoft Defender for Endpoint telemetry and Kusto Query Language (KQL), the investigation reconstructed attacker activity, identified indicators of compromise (IOCs), and determined the root causes that enabled the breach.
 
 ---
 
-## Investigation Objectives
+# 🏢 Organisation Overview
 
-- Identify initial access method  
-- Identify compromised account(s)  
-- Determine what data was stolen  
-- Identify exfiltration method  
-- Confirm persistence mechanisms  
+<p align="center">
+  <img width="350" alt="Azuki Import Export" src="https://github.com/user-attachments/assets/5c1ac1d3-0a5e-4e13-91bd-3831aacbdced">
+</p>
+
+| Attribute | Details |
+|---|---|
+| Company | Azuki Import / Export Trading Co. |
+| Industry | Shipping Logistics & International Trade |
+| Employees | 23 |
+| Region | Japan & Southeast Asia |
 
 ---
 
-## IOC Summary
+# ⚠️ Incident Background
+
+Azuki Import / Export Trading Co. unexpectedly lost a long-standing six-year shipping contract after a competitor undercut their pricing strategy by exactly **3%**.
+
+Shortly afterward, confidential supplier agreements and internal pricing documents were discovered circulating on underground forums.
+
+The precision of the competitor’s pricing strongly suggested prior access to confidential commercial intelligence.
+
+An internal investigation was initiated to determine:
+
+- how the compromise occurred
+- which systems were affected
+- what information was stolen
+- whether persistence mechanisms remained active
+
+---
+
+# 🎯 Investigation Objectives
+
+The investigation aimed to:
+
+- Identify the initial access vector
+- Determine compromised accounts
+- Identify attacker activity
+- Confirm persistence mechanisms
+- Determine the exfiltration method
+- Assess business impact
+- Recommend containment and remediation actions
+
+---
+
+# 💻 Compromised Asset
+
+| Attribute | Value |
+|---|---|
+| Hostname | `AZUKI-SL` |
+| Asset Role | IT Administrator Workstation |
+| Operating System | Windows |
+| Telemetry Source | Microsoft Defender for Endpoint |
+
+---
+
+# 🚨 IOC Summary
 
 | Indicator | Value |
-|-----------|------|
-| Host | AZUKI-SL |
-| Compromised Account | Administrator |
+|---|---|
+| Host | `AZUKI-SL` |
+| Compromised Account | `Administrator` |
 | Access Vector | RDP |
-| Persistence | Registry Run Key |
-| Exfiltration | HTTPS outbound |
-| Impact | Confidential data leak |
-| Threat Type | Corporate espionage |
+| Persistence Mechanism | Registry Run Key |
+| Exfiltration Method | HTTPS Outbound Traffic |
+| Threat Classification | Corporate Espionage |
+| Severity | 🔴 HIGH |
 
 ---
 
-## Investigation Queries
+# 🧪 Investigation Methodology
 
-### Initial Access Detection
+The investigation leveraged:
+
+- Microsoft Defender for Endpoint telemetry
+- KQL-based threat hunting
+- process analysis
+- registry analysis
+- network telemetry correlation
+- authentication investigation
+
+### Telemetry Sources
+
+- `DeviceProcessEvents`
+- `DeviceNetworkEvents`
+- `DeviceRegistryEvents`
+- `DeviceLogonEvents`
+
+---
+
+# 🔍 Investigation Findings
+
+---
+
+# 1️⃣ Initial Access Detection
+
+## KQL Query
 
 ```kql
 DeviceProcessEvents
 | where DeviceName == "azuki-sl"
 | where FileName == "mstsc.exe"
-| or ProcessCommandLine has "3389"
+    or ProcessCommandLine has "3389"
+| project Timestamp, DeviceName, FileName, ProcessCommandLine, InitiatingProcessAccountName
+| order by Timestamp desc
+```
 
-Finding:
-RDP activity detected from an external location using Administrator credentials outside business hours.
+## Findings
 
-Malicious Execution
+Analysis revealed successful RDP-related activity associated with the `Administrator` account originating outside normal business hours.
+
+### Indicators Observed
+
+- Remote Desktop process execution
+- RDP port usage (`3389`)
+- administrative authentication activity
+- anomalous login timing
+
+### Assessment
+
+The attacker likely leveraged exposed RDP services combined with compromised or weak administrative credentials to gain initial access.
+
+---
+
+# 2️⃣ Malicious Execution Activity
+
+## KQL Query
+
+```kql
 DeviceProcessEvents
 | where DeviceName == "azuki-sl"
 | where InitiatingProcessAccountName == "Administrator"
+| project Timestamp, FileName, ProcessCommandLine, InitiatingProcessParentFileName
+| order by Timestamp desc
+```
 
+## Findings
 
-Finding:
-Unrecognized executables launched via cmd.exe and powershell.exe.
+Multiple suspicious processes were executed using:
 
-Persistence Validation
+- `cmd.exe`
+- `powershell.exe`
+
+### Indicators Observed
+
+- abnormal PowerShell execution
+- unrecognized binaries
+- suspicious command-line activity
+- administrative process chaining
+
+### Assessment
+
+The attacker executed post-compromise tooling to:
+
+- establish control
+- perform reconnaissance
+- prepare data collection and exfiltration activities
+
+---
+
+# 3️⃣ Persistence Mechanism Identification
+
+## KQL Query
+
+```kql
 DeviceRegistryEvents
 | where DeviceName == "azuki-sl"
 | where ActionType == "RegistryValueSet"
+| project Timestamp, RegistryKey, RegistryValueName, RegistryValueData
+| order by Timestamp desc
+```
 
+## Findings
 
-Finding:
-Registry Run keys modified to allow persistence after reboot.
+Registry Run keys were modified to ensure malicious code execution after system reboot.
 
-Data Exfiltration
+### Persistence Technique
+
+- Registry Run Keys
+- Auto-start execution
+
+### Assessment
+
+The attacker implemented persistence to maintain long-term access and survive endpoint restarts.
+
+---
+
+# 4️⃣ Data Exfiltration Analysis
+
+## KQL Query
+
+```kql
 DeviceNetworkEvents
 | where DeviceName == "azuki-sl"
-| where RemotePort in (443, 8080)
+| where RemotePort in (443,8080)
+| project Timestamp, RemoteIP, RemotePort, InitiatingProcessFileName, SentBytes
+| order by Timestamp desc
+```
 
+## Findings
 
-Finding:
-Outbound HTTPS transfers exceeding baseline volume.
+Significant outbound HTTPS traffic was observed outside normal operational baselines.
 
-Timeline (UTC)
-Time	Event
-2025-11-19 22:41	RDP login as Administrator
-2025-11-19 23:05	Suspicious PowerShell usage
-2025-11-20 01:30	Large outbound transfer
-2025-11-20 04:05	Attacker activity ceased
+### Indicators Observed
 
+- elevated outbound transfer volume
+- encrypted communications
+- external network destinations
+- abnormal traffic timing
 
-MITRE ATT&CK Mapping
-Tactic	Technique
-Initial Access	T1110 – Brute Force
-Execution	T1059 – PowerShell
-Persistence	T1547 – Registry Run
-Exfiltration	T1041 – C2 Channel
-What Happened
+### Assessment
 
-An external attacker accessed AZUKI-SL via exposed RDP using Administrator credentials.
-They executed malicious binaries, installed persistence, and navigated internal systems.
-Sensitive supply contracts and pricing documentation were compressed and exfiltrated.
+Sensitive internal documents were likely compressed and exfiltrated through encrypted outbound HTTPS channels to attacker-controlled infrastructure.
 
-The stolen documents were later observed on underground forums.
+---
 
-Impact Assessment
-Business Impact
+# 🕒 Attack Timeline (UTC)
 
-Contract loss
+| Time | Event |
+|---|---|
+| 2025-11-19 22:41 | RDP login using Administrator credentials |
+| 2025-11-19 23:05 | Suspicious PowerShell activity initiated |
+| 2025-11-20 00:10 | Registry persistence modifications observed |
+| 2025-11-20 01:30 | Large outbound HTTPS transfers detected |
+| 2025-11-20 04:05 | Malicious activity ceased |
 
-Pricing strategy exposed
+---
 
-Commercial intelligence compromise
+# ⚔️ MITRE ATT&CK Mapping
 
-Risk Level
+| Tactic | Technique |
+|---|---|
+| Initial Access | T1133 — External Remote Services |
+| Credential Access | T1110 — Brute Force |
+| Execution | T1059.001 — PowerShell |
+| Persistence | T1547.001 — Registry Run Keys |
+| Discovery | T1082 — System Information Discovery |
+| Exfiltration | T1041 — Exfiltration Over C2 Channel |
 
-HIGH
+---
 
-Business confidential data was leaked externally.
+# 🧠 What Happened
 
-Root Cause Analysis
-Category	Root
-Access Control	No MFA on RDP
-Exposure	Public RDP
-Credential Hygiene	Admin reuse
-Monitoring	No anomaly alert
-Network	Unrestricted egress
-Recommendations
-Immediate
+The investigation concluded that an external threat actor gained unauthorized access to the workstation `AZUKI-SL` via exposed Remote Desktop Protocol (RDP) services using compromised administrative credentials.
 
-Disable external RDP
+Following successful access, the attacker:
 
-Reset Admin credentials
+- executed malicious PowerShell commands
+- launched unauthorized binaries
+- established registry-based persistence
+- accessed confidential supplier and pricing documentation
+- exfiltrated sensitive business data through encrypted outbound HTTPS communications
 
-Isolate AZUKI-SL
+The compromised documents were later identified on underground forums, confirming successful data theft.
 
-Reimage the device
+---
 
-Short Term
+# 📉 Impact Assessment
 
-Enforce MFA
+## Business Impact
 
-Enable RDP alerts
+- Loss of strategic commercial advantage
+- Exposure of confidential pricing structures
+- Supplier contract compromise
+- Competitive intelligence theft
+- Reputational risk
 
-Lock down admin privileges
+---
 
-Reduce outbound access
+## Security Impact
 
-Long Term
+| Category | Assessment |
+|---|---|
+| Confidentiality | 🔴 Severely Impacted |
+| Integrity | 🟠 Potentially Impacted |
+| Availability | 🟢 Not Significantly Affected |
 
-SIEM deployment
+---
 
-Zero Trust architecture
+# 🔴 Overall Risk Level
 
-Network segmentation
+# HIGH
 
-EDR policy hardening
+Sensitive business intelligence and proprietary commercial data were successfully exfiltrated outside the organization.
 
-Detection Improvements
-Category	Improvement
-Process Monitoring	Alert on Admin powershell
-Network	Monitor abnormal HTTPS
-Persistence	Registry alerts
-Login	Geo anomaly detection
-Final Verdict
+---
 
-This was a deliberate cyber-espionage incident, not user error or accidental exposure.
+# 🔬 Root Cause Analysis
 
-The attacker:
+| Security Area | Root Cause |
+|---|---|
+| Access Control | No MFA enforced on RDP |
+| Exposure Management | Public-facing RDP exposure |
+| Credential Hygiene | Administrative credential reuse |
+| Monitoring | No anomaly-based alerting |
+| Network Security | Unrestricted outbound traffic |
+| Endpoint Security | Insufficient PowerShell monitoring |
 
-Exploited exposed access
+---
 
-Stole high-value documents
+# 🛡️ Recommendations
 
-Enabled persistence
+---
 
-Exfiltrated data
+# Immediate Actions
 
-Left without triggering alarms
+- Disable external RDP exposure
+- Reset all privileged credentials
+- Isolate `AZUKI-SL`
+- Preserve forensic evidence
+- Reimage compromised systems
 
-Incident Status
+---
 
-✅ Closed
-✅ Management notified
-✅ Forensics preserved
-✅ Remediation underway
+# Short-Term Improvements
 
-Author
+- Enforce MFA for remote access
+- Restrict administrative privileges
+- Enable RDP anomaly alerting
+- Harden PowerShell policies
+- Implement outbound traffic restrictions
 
-Pedro Fernandes Parreira
+---
+
+# Long-Term Security Improvements
+
+- Deploy centralized SIEM monitoring
+- Implement Zero Trust architecture
+- Segment critical business systems
+- Harden EDR policies
+- Implement privileged access management (PAM)
+- Deploy centralized logging and alert correlation
+
+---
+
+# 🚨 Detection Engineering Improvements
+
+| Category | Recommendation |
+|---|---|
+| Process Monitoring | Alert on administrative PowerShell execution |
+| Authentication | Detect anomalous RDP logons |
+| Network Monitoring | Identify abnormal HTTPS transfers |
+| Persistence Detection | Monitor registry auto-run modifications |
+| Threat Hunting | Correlate administrative process chains |
+
+---
+
+# 🧠 Lessons Learned
+
+This incident highlighted several important cybersecurity lessons:
+
+- exposed RDP remains a high-risk attack vector
+- administrative credential hygiene is critical
+- PowerShell abuse remains common in post-exploitation activity
+- outbound encrypted traffic can conceal data exfiltration
+- persistence mechanisms often leverage simple registry modifications
+- lack of anomaly detection significantly delays incident discovery
+
+The investigation also demonstrated the importance of:
+
+- endpoint telemetry
+- detection engineering
+- authentication monitoring
+- threat hunting workflows
+- layered security controls
+
+---
+
+# ✅ Final Verdict
+
+This investigation determined that the incident was a deliberate cyber-espionage operation rather than accidental exposure or insider misuse.
+
+The attacker successfully:
+
+- exploited exposed remote access
+- leveraged privileged credentials
+- established persistence
+- exfiltrated sensitive commercial intelligence
+- avoided detection during active operations
+
+---
+
+# 📌 Incident Status
+
+| Status | Result |
+|---|---|
+| Investigation | ✅ Completed |
+| Management Notification | ✅ Completed |
+| Forensic Preservation | ✅ Completed |
+| Containment Actions | ✅ Initiated |
+| Remediation | ✅ Underway |
+
+---
+
+# 🚀 Skills Demonstrated
+
+- Threat Hunting
+- Microsoft Defender for Endpoint
+- KQL Querying
+- Endpoint Investigation
+- Incident Response
+- Network Traffic Analysis
+- PowerShell Detection
+- Persistence Analysis
+- MITRE ATT&CK Mapping
+- SOC Operations
+- Detection Engineering
+- Root Cause Analysis
+
+---
+
+# 👨‍💻 Author
+
+## Pedro Fernandes Parreira
+
+Cyber Threat Hunter | SOC Analyst | Detection Engineering | Vulnerability Management
+
+### 🔗 LinkedIn
+https://www.linkedin.com/in/pedro-parreira-85902a5a/
+
+### 🔗 GitHub
+https://github.com/pedro33parreira
 Cyber Threat Hunter / SOC Analyst Portfolio
